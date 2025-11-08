@@ -57,6 +57,12 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        "ai-glow": "hsl(var(--ai-glow))",
+        "ai-glow-soft": "hsl(var(--ai-glow-soft))",
+      },
+      backgroundImage: {
+        "gradient-ai": "var(--gradient-ai)",
+        "gradient-subtle": "var(--gradient-subtle)",
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -84,6 +90,8 @@ export default {
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        "glow": "glow 2s ease-in-out infinite",
       },
     },
   },
