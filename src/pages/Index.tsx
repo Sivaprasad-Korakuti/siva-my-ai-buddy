@@ -22,25 +22,64 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [userName, setUserName] = useState('');
   const [showSettings, setShowSettings] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [lastVoiceResponse, setLastVoiceResponse] = useState('');
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
-  const { isListening, transcript, startListening, stopListening, isSupported: voiceSupported } = useVoiceInput();
+  const { 
+    isListening, 
+    transcript, 
+    startListening, 
+    stopListening, 
+    isSupported: voiceSupported,
+    isWakeWordMode,
+    startWakeWordMode,
+    stopWakeWordMode
+  } = useVoiceInput();
   const { speak, stop: stopSpeaking, isSpeaking } = useTextToSpeech();
+
+  // Auto-start wake word detection on mount
+  useEffect(() => {
+    if (voiceSupported) {
+      startWakeWordMode();
+    }
+    return () => {
+      if (voiceSupported) {
+        stopWakeWordMode();
+      }
+    };
+  }, [voiceSupported, startWakeWordMode, stopWakeWordMode]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Wake word detection
   useEffect(() => {
-    if (transcript && !isListening) {
-      setInput(transcript);
+    if (isWakeWordMode && transcript.toLowerCase().includes('hey siva')) {
+      setVoiceMode(true);
+      stopWakeWordMode();
+      startListening();
+      speak('Yes, I\'m listening!');
     }
-  }, [transcript, isListening]);
+  }, [transcript, isWakeWordMode, startListening, stopWakeWordMode, speak]);
 
-  const streamChat = async (userMessage: string) => {
+  // Handle voice input completion
+  useEffect(() => {
+    if (voiceMode && transcript && !isListening && !isWakeWordMode) {
+      const cleanTranscript = transcript.toLowerCase().replace('hey siva', '').trim();
+      if (cleanTranscript) {
+        streamChat(cleanTranscript, true);
+      }
+    }
+  }, [transcript, isListening, voiceMode, isWakeWordMode]);
+
+  const streamChat = async (userMessage: string, fromVoice = false) => {
     const newMessages = [...messages, { role: 'user' as const, content: userMessage }];
-    setMessages(newMessages);
+    if (!fromVoice) {
+      setMessages(newMessages);
+    }
     setInput('');
     setIsLoading(true);
 
@@ -74,7 +113,9 @@ const Index = () => {
       let assistantMessage = '';
       let textBuffer = '';
 
-      setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+      if (!fromVoice) {
+        setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+      }
 
       while (true) {
         const { done, value } = await reader.read();
@@ -99,19 +140,32 @@ const Index = () => {
             const content = parsed.choices?.[0]?.delta?.content;
             if (content) {
               assistantMessage += content;
-              setMessages(prev => {
-                const updated = [...prev];
-                updated[updated.length - 1] = {
-                  role: 'assistant',
-                  content: assistantMessage,
-                };
-                return updated;
-              });
+              if (!fromVoice) {
+                setMessages(prev => {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = {
+                    role: 'assistant',
+                    content: assistantMessage,
+                  };
+                  return updated;
+                });
+              }
             }
           } catch (e) {
             // Ignore parsing errors for incomplete JSON
           }
         }
+      }
+
+      // Auto-speak response in voice mode
+      if (fromVoice && assistantMessage) {
+        setLastVoiceResponse(assistantMessage);
+        speak(assistantMessage);
+        // Wait for speech to finish, then restart wake word detection
+        setTimeout(() => {
+          setVoiceMode(false);
+          startWakeWordMode();
+        }, assistantMessage.length * 50); // Rough estimate of speech duration
       }
     } catch (error) {
       console.error('Chat error:', error);
@@ -120,7 +174,13 @@ const Index = () => {
         description: error instanceof Error ? error.message : 'Failed to send message',
         variant: 'destructive',
       });
-      setMessages(prev => prev.slice(0, -1));
+      if (!fromVoice) {
+        setMessages(prev => prev.slice(0, -1));
+      }
+      if (fromVoice) {
+        setVoiceMode(false);
+        startWakeWordMode();
+      }
     } finally {
       setIsLoading(false);
     }
@@ -129,7 +189,7 @@ const Index = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
-    streamChat(input);
+    streamChat(input, false);
   };
 
   const handleVoiceInput = () => {
@@ -195,20 +255,39 @@ const Index = () => {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
         <div className="container mx-auto px-4 py-6 max-w-4xl">
-          {messages.map((message, index) => (
-            <ChatMessage
-              key={index}
-              role={message.role}
-              content={message.content}
-              onSpeak={message.role === 'assistant' ? () => handleSpeak(message.content) : undefined}
-              isSpeaking={isSpeaking}
-            />
-          ))}
-          {isLoading && (
-            <div className="flex items-center gap-2 text-muted-foreground mb-4">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span className="text-sm">Siva is thinking...</span>
+          {voiceMode ? (
+            <div className="flex flex-col items-center justify-center h-full space-y-8">
+              <div className="w-32 h-32 rounded-full bg-gradient-ai flex items-center justify-center animate-pulse-slow">
+                <Mic className="w-16 h-16 text-primary-foreground" />
+              </div>
+              <div className="text-center space-y-2">
+                <h2 className="text-2xl font-semibold">
+                  {isListening ? 'Listening...' : isSpeaking ? 'Speaking...' : 'Processing...'}
+                </h2>
+                <p className="text-muted-foreground">
+                  {isListening ? 'Say "Hey Siva" to activate' : lastVoiceResponse ? 'Voice response playing' : 'Ready for your command'}
+                </p>
+              </div>
+              {isListening && <VoiceVisualizer isActive={isListening} className="scale-150" />}
             </div>
+          ) : (
+            <>
+              {messages.map((message, index) => (
+                <ChatMessage
+                  key={index}
+                  role={message.role}
+                  content={message.content}
+                  onSpeak={message.role === 'assistant' ? () => handleSpeak(message.content) : undefined}
+                  isSpeaking={isSpeaking}
+                />
+              ))}
+              {isLoading && (
+                <div className="flex items-center gap-2 text-muted-foreground mb-4">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">Siva is thinking...</span>
+                </div>
+              )}
+            </>
           )}
           <div ref={messagesEndRef} />
         </div>
@@ -260,7 +339,9 @@ const Index = () => {
           </form>
           <p className="text-xs text-muted-foreground mt-2 text-center">
             {voiceSupported 
-              ? "Type or click the mic to speak with Siva" 
+              ? isWakeWordMode 
+                ? "Say 'Hey Siva' to activate voice mode" 
+                : "Type or click the mic to speak with Siva"
               : "Type your message to chat with Siva"}
           </p>
         </div>

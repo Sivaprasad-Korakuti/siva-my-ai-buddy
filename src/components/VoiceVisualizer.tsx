@@ -32,8 +32,8 @@ export const VoiceVisualizer = ({ isActive, className = '' }: VoiceVisualizerPro
         const y = (canvas.height - height) / 2;
 
         const gradient = ctx.createLinearGradient(x, y, x, y + height);
-        gradient.addColorStop(0, 'hsl(195, 100%, 60%)');
-        gradient.addColorStop(1, 'hsl(195, 100%, 50%)');
+        gradient.addColorStop(0, 'hsl(0, 0%, 90%)');
+        gradient.addColorStop(1, 'hsl(0, 0%, 70%)');
 
         ctx.fillStyle = gradient;
         ctx.fillRect(x, y, barWidth, height);

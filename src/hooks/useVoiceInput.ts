@@ -13,13 +13,14 @@ export const useVoiceInput = () => {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [recognition, setRecognition] = useState<any>(null);
+  const [isWakeWordMode, setIsWakeWordMode] = useState(false);
 
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       const recognitionInstance = new SpeechRecognition();
       
-      recognitionInstance.continuous = false;
+      recognitionInstance.continuous = true;
       recognitionInstance.interimResults = true;
       recognitionInstance.lang = 'en-US';
 
@@ -57,11 +58,31 @@ export const useVoiceInput = () => {
     }
   }, [recognition]);
 
+  const startWakeWordMode = useCallback(() => {
+    if (recognition) {
+      setIsWakeWordMode(true);
+      setTranscript('');
+      recognition.start();
+      setIsListening(true);
+    }
+  }, [recognition]);
+
+  const stopWakeWordMode = useCallback(() => {
+    if (recognition) {
+      setIsWakeWordMode(false);
+      recognition.stop();
+      setIsListening(false);
+    }
+  }, [recognition]);
+
   return {
     isListening,
     transcript,
     startListening,
     stopListening,
     isSupported: recognition !== null,
+    isWakeWordMode,
+    startWakeWordMode,
+    stopWakeWordMode,
   };
 };
